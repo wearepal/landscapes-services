@@ -1,0 +1,9 @@
+accelerate==0.34.2
+numpy==2.1.1
+Pillow==10.1.0
+pynvml==11.5.3
+rasterio==1.4.1
+torch==2.4.1
+transformers==4.45.1
+fastapi==0.115.0
+uvicorn==0.31.0
