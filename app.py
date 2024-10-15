@@ -3,8 +3,17 @@ from os import remove as rm
 from utils.infer import detect_segment
 from transformers import set_seed
 from utils.geoserver import retrieve_tiff
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # entry point for machine learning model API
 @app.get("/v1/{model_id}")
