@@ -15,21 +15,14 @@ def detect_segment(
     detector_id: Optional[str] = None,
     segmenter_id: Optional[str] = None,
     transform: Optional[bool] = False
-) -> List[dict]:
+):
     if not image_path.endswith('.tif'):
         raise ValueError('The image must be a GeoTIFF file.')
 
     image = Image.open(image_path, 'r')
 
     if transform:
-        with rasterio.open(image_path) as src:
-            transform = src.transform
-
-        width, height = image.size
-        cols, rows = np.meshgrid(np.arange(width), np.arange(height))
-
-        long, lat = rasterio.transform.xy(src.transform, rows, cols)
-        long, lat = np.array(long), np.array(lat)
+        src = rasterio.open(image_path)
 
     det_model = AutoModelForZeroShotObjectDetection.from_pretrained(detector_id)
     det_processor = AutoProcessor.from_pretrained(detector_id)
@@ -72,17 +65,17 @@ def detect_segment(
         )
         masks = masks[0]
 
-        masks = refine_masks(masks)
-        for i, mask in enumerate(masks):
+        for i, mask in enumerate(refine_masks(masks)):
 
             xmin, ymin, xmax, ymax = detections['boxes'][i].int().tolist()
 
             if transform:
-                xmin, ymin = rasterio.transform.xy(transform, xmin, ymin)
-                xmax, ymax = rasterio.transform.xy(transform, xmax, ymax)
+                xmin, ymin = src.xy(xmin, ymin)
+                xmax, ymax = src.xy(xmax, ymax)
 
-                xmask, ymask = np.where(mask==1)
-                mask = np.hstack((long[xmask][..., np.newaxis], lat[ymask][..., np.newaxis]))
+                xindex, yindex = np.where(mask == 1)
+                xindex, yindex = src.xy(xindex, yindex)
+                mask = np.hstack((xindex[..., np.newaxis], yindex[..., np.newaxis]))
 
             preds.append({
                 'score': detections['scores'][i].item(),
@@ -94,10 +87,8 @@ def detect_segment(
         return preds
 
 
-def refine_masks(masks: torch.BoolTensor) -> List[np.ndarray]:
-    masks = masks.cpu().float()
+def refine_masks(masks: torch.BoolTensor):
     masks = masks.permute(0, 2, 3, 1)
-    masks = masks.mean(axis=-1)
-    masks = (masks > 0).int()
-    masks = masks.numpy().astype(np.uint8)
-    return list(masks)
+    masks = masks.prod(axis=-1)
+    masks = (masks > 0).numpy()
+    return masks.astype(np.uint8)
