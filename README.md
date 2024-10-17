@@ -10,7 +10,7 @@ Accessible via: https://landscapes.wearepal.ai/api/
 * Build the application with ``docker build --platform "linux/amd64" -t landscapes-services .``
 * Deploy with ``docker run -d --name landscapes-services --network landscapes_services -p 5001:5001 landscapes-services``
 
-## Entry Points
+## Entry Points
 
 ### v1/segment (get)
 
