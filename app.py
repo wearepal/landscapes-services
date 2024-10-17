@@ -16,7 +16,7 @@ app.add_middleware(
 )
 
 # entry point for machine learning model API
-@app.get("/v1/{model_id}")
+@app.get("/api/v1/{model_id}")
 async def v1(
         model_id: str, 
         labels: str, 
