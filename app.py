@@ -37,6 +37,9 @@ async def v1(
                 # retrieve the temporary image from geoserver
                 img_path = retrieve_tiff(bbox, width, height, layer)
 
+                # transform labels into array split by comma
+                labels = labels.split(',').strip()
+
                 # detect and segment the image
                 predictions = detect_segment(
                     image_path=img_path,
