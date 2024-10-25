@@ -11,16 +11,12 @@ from typing import List, Optional
 def detect_segment(
     image_path: str,
     labels: List[List[str]],
-    threshold: float = 0.3,
+    confidence: float = 0.1,
     detector_id: Optional[str] = None,
     segmenter_id: Optional[str] = None,
     transform: Optional[bool] = False
 ):
-    if not image_path.endswith('.tif'):
-        raise ValueError('The image must be a GeoTIFF file.')
-
-    image = Image.open(image_path, 'r')
-
+    image = Image.open(image_path)
     if transform:
         src = rasterio.open(image_path)
 
@@ -30,13 +26,9 @@ def detect_segment(
     seg_model = AutoModelForMaskGeneration.from_pretrained(segmenter_id)
     seg_processor = AutoProcessor.from_pretrained(segmenter_id)
 
-    try:
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        det_model = det_model.to(device)
-        seg_model = seg_model.to(device)
-
-    except:
-        pass
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    det_model = det_model.to(device)
+    seg_model = seg_model.to(device)
 
     preds = []
     with torch.no_grad():
@@ -45,17 +37,21 @@ def detect_segment(
         target_sizes = torch.tensor([image.size[::-1]])
 
         inputs = det_processor(text=labels, images=image, return_tensors='pt')
+        for k, v in inputs.items():
+            inputs[k] = v.to(device)
         outputs = det_model(**inputs)
 
         # Convert outputs (bounding boxes and class logits) to Pascal VOC format (xmin, ymin, xmax, ymax)
         detections = det_processor.post_process_object_detection(
             outputs, 
-            threshold=threshold, 
+            threshold=confidence, 
             target_sizes=target_sizes
         )
         detections = detections[0]
 
         inputs = seg_processor(images=image, input_boxes=[detections['boxes'].tolist()], return_tensors='pt')
+        for k, v in inputs.items():
+            inputs[k] = v.to(device)
         outputs = seg_model(**inputs)
 
         masks = seg_processor.post_process_masks(
@@ -68,7 +64,6 @@ def detect_segment(
         for i, mask in enumerate(refine_masks(masks)):
 
             xmin, ymin, xmax, ymax = detections['boxes'][i].int().tolist()
-
             if transform:
                 xmin, ymin = src.xy(xmin, ymin)
                 xmax, ymax = src.xy(xmax, ymax)
@@ -78,7 +73,7 @@ def detect_segment(
                 mask = np.hstack((xindex[..., np.newaxis], yindex[..., np.newaxis]))
 
             preds.append({
-                'score': detections['scores'][i].item(),
+                'confidence': detections['scores'][i].item() * 100,
                 'label': labels[0][detections['labels'][i].item()],
                 'box': {'xmin': xmin, 'ymin': ymin, 'xmax': xmax, 'ymax': ymax},
                 'mask': mask.tolist()
@@ -90,5 +85,5 @@ def detect_segment(
 def refine_masks(masks: torch.BoolTensor):
     masks = masks.permute(0, 2, 3, 1)
     masks = masks.prod(axis=-1)
-    masks = (masks > 0).numpy()
+    masks = (masks.cpu() > 0).numpy()
     return masks.astype(np.uint8)

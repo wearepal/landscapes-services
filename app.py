@@ -20,7 +20,7 @@ app.add_middleware(
 async def v1(
         model_id: str, 
         labels: str, 
-        threshold: float = 0.1, 
+        confidence: float = 10.0, 
         detector_id: str = 'google/owlv2-base-patch16', 
         segmenter_id: str = 'facebook/sam-vit-base', 
         seed : int = 0,
@@ -38,13 +38,13 @@ async def v1(
                 img_path = retrieve_tiff(bbox, width, height, layer)
 
                 # strip each label
-                labels = [j.strip() for j in labels.split(',')]
+                labels = [label.strip() for label in labels.split(',')]
 
                 # detect and segment the image
                 predictions = detect_segment(
                     image_path=img_path,
                     labels=[labels],
-                    threshold=threshold,
+                    confidence=(confidence / 100),
                     detector_id=detector_id,
                     segmenter_id=segmenter_id,
                     transform=True
