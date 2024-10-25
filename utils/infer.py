@@ -66,8 +66,8 @@ def detect_segment(
 
             xmin, ymin, xmax, ymax = detections['boxes'][i].int().tolist()
             if transform:
-                xmin, ymin = src.xy(xmin, ymin)
-                xmax, ymax = src.xy(xmax, ymax)
+                xmin, ymax = src.xy(xmin, ymin)
+                xmax, ymin = src.xy(xmax, ymax)
 
                 xindex, yindex = np.where(mask == 1)
                 xindex, yindex = src.xy(xindex, yindex)
