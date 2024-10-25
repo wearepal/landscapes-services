@@ -68,7 +68,7 @@ def detect_segment(
             if transform:
                 xmin, ymin = src.xy(xmin, ymin)
                 xmax, ymax = src.xy(xmax, ymax)
-                ymin, ymax = ymax, yminx
+                ymin, ymax = ymax, ymin
 
                 xindex, yindex = np.where(mask == 1)
                 xindex, yindex = src.xy(xindex, yindex)
