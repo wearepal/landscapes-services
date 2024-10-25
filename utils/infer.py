@@ -27,6 +27,7 @@ def detect_segment(
     seg_processor = AutoProcessor.from_pretrained(segmenter_id)
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    print(device)
     det_model = det_model.to(device)
     seg_model = seg_model.to(device)
 
