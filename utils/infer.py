@@ -68,6 +68,7 @@ def detect_segment(
             if transform:
                 xmin, ymin = src.xy(xmin, ymin)
                 xmax, ymax = src.xy(xmax, ymax)
+                ymin, ymax = ymax, yminx
 
                 xindex, yindex = np.where(mask == 1)
                 xindex, yindex = src.xy(xindex, yindex)
@@ -76,7 +77,7 @@ def detect_segment(
             preds.append({
                 'confidence': detections['scores'][i].item() * 100,
                 'label': labels[0][detections['labels'][i].item()],
-                'box': {'xmin': xmin, 'ymin': ymax, 'xmax': xmax, 'ymax': ymin},
+                'box': {'xmin': xmin, 'ymin': ymin, 'xmax': xmax, 'ymax': ymax},
                 'mask': mask.tolist()
             })
 
