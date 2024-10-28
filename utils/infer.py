@@ -3,7 +3,7 @@ import rasterio
 import torch
 
 from PIL import Image
-from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection, AutoModelForMaskGeneration
+from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection
 from typing import List, Optional
 
 
@@ -20,16 +20,21 @@ def detect_segment(
     if transform:
         src = rasterio.open(image_path)
 
-    det_model = AutoModelForZeroShotObjectDetection.from_pretrained(detector_id)
-    det_processor = AutoProcessor.from_pretrained(detector_id)
-
-    seg_model = AutoModelForMaskGeneration.from_pretrained(segmenter_id)
-    seg_processor = AutoProcessor.from_pretrained(segmenter_id)
-
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    print(device)
+
+    det_processor = AutoProcessor.from_pretrained(detector_id)
+    det_model = AutoModelForZeroShotObjectDetection.from_pretrained(detector_id)
     det_model = det_model.to(device)
-    seg_model = seg_model.to(device)
+
+    if 'sam2' in segmenter_id:
+        from sam2.sam2_image_predictor import SAM2ImagePredictor
+        seg_model = SAM2ImagePredictor.from_pretrained(segmenter_id)
+
+    else:
+        from transformers import AutoModelForMaskGeneration
+        seg_processor = AutoProcessor.from_pretrained(segmenter_id)
+        seg_model = AutoModelForMaskGeneration.from_pretrained(segmenter_id)
+        seg_model = seg_model.to(device)
 
     preds = []
     with torch.no_grad():
@@ -50,17 +55,23 @@ def detect_segment(
         )
         detections = detections[0]
 
-        inputs = seg_processor(images=image, input_boxes=[detections['boxes'].tolist()], return_tensors='pt')
-        for k, v in inputs.items():
-            inputs[k] = v.to(device)
-        outputs = seg_model(**inputs)
+        if 'sam2' in segmenter_id:
+            seg_model.set_image(image)
+            masks, _, _ = seg_model.predict(box=detections['boxes'], multimask_output=False)
+            masks = torch.tensor(masks, device=device)
 
-        masks = seg_processor.post_process_masks(
-            masks=outputs['pred_masks'],
-            original_sizes=inputs['original_sizes'],
-            reshaped_input_sizes=inputs['reshaped_input_sizes']
-        )
-        masks = masks[0]
+        else:
+            inputs = seg_processor(images=image, input_boxes=[detections['boxes'].tolist()], return_tensors='pt')
+            for k, v in inputs.items():
+                inputs[k] = v.to(device)
+            outputs = seg_model(**inputs)
+
+            masks = seg_processor.post_process_masks(
+                masks=outputs['pred_masks'],
+                original_sizes=inputs['original_sizes'],
+                reshaped_input_sizes=inputs['reshaped_input_sizes']
+            )
+            masks = masks[0]
 
         for i, mask in enumerate(refine_masks(masks)):
 
