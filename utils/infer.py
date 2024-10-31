@@ -16,31 +16,19 @@ def detect_segment(
     segmenter_id: Optional[str] = None,
     transform: Optional[bool] = False
 ):
-    image = Image.open(image_path)
-    if transform:
-        src = rasterio.open(image_path)
-
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     det_processor = AutoProcessor.from_pretrained(detector_id)
     det_model = AutoModelForZeroShotObjectDetection.from_pretrained(detector_id)
     det_model = det_model.to(device)
 
-    if 'sam2' in segmenter_id:
-        from sam2.sam2_image_predictor import SAM2ImagePredictor
-        seg_model = SAM2ImagePredictor.from_pretrained(segmenter_id)
-
-    else:
-        from transformers import AutoModelForMaskGeneration
-        seg_processor = AutoProcessor.from_pretrained(segmenter_id)
-        seg_model = AutoModelForMaskGeneration.from_pretrained(segmenter_id)
-        seg_model = seg_model.to(device)
-
     preds = []
     with torch.no_grad():
 
         # Target image sizes (height, width) to rescale box predictions [batch_size, 2]
+        image = Image.open(image_path)
         target_sizes = torch.tensor([image.size[::-1]])
+        image = expand2square(image, det_model.config.vision_config.image_size)
 
         inputs = det_processor(text=labels, images=image, return_tensors='pt')
         for k, v in inputs.items():
@@ -55,12 +43,26 @@ def detect_segment(
         )
         detections = detections[0]
 
+        if len(detections['boxes']) < 1:
+            return None
+
+        del det_model
+        torch.cuda.empty_cache()
+
         if 'sam2' in segmenter_id:
+            from sam2.sam2_image_predictor import SAM2ImagePredictor
+            seg_model = SAM2ImagePredictor.from_pretrained(segmenter_id)
+
             seg_model.set_image(image)
             masks, _, _ = seg_model.predict(box=detections['boxes'], multimask_output=False)
             masks = torch.tensor(masks, device=device)
 
         else:
+            from transformers import AutoModelForMaskGeneration
+            seg_processor = AutoProcessor.from_pretrained(segmenter_id)
+            seg_model = AutoModelForMaskGeneration.from_pretrained(segmenter_id)
+            seg_model = seg_model.to(device)
+
             inputs = seg_processor(images=image, input_boxes=[detections['boxes'].tolist()], return_tensors='pt')
             for k, v in inputs.items():
                 inputs[k] = v.to(device)
@@ -73,10 +75,15 @@ def detect_segment(
             )
             masks = masks[0]
 
+        del seg_model
+        torch.cuda.empty_cache()
+
         for i, mask in enumerate(refine_masks(masks)):
 
             xmin, ymin, xmax, ymax = detections['boxes'][i].int().tolist()
             if transform:
+                src = rasterio.open(image_path)
+
                 xmin, ymin = src.xy(xmin, ymin)
                 xmax, ymax = src.xy(xmax, ymax)
                 ymin, ymax = ymax, ymin
@@ -93,6 +100,28 @@ def detect_segment(
             })
 
         return preds
+
+
+def expand2square(image, size):
+    width, height = image.size
+    background_color = (0, 0, 0)
+
+    if (width < size) and (height < size):
+        result = Image.new(image.mode, (size, size), background_color)
+        result.paste(image)
+
+    elif width == height:
+        result = image
+
+    elif width > height:
+        result = Image.new(image.mode, (width, width), background_color)
+        result.paste(image)
+
+    else:
+        result = Image.new(image.mode, (height, height), background_color)
+        result.paste(image)
+
+    return result
 
 
 def refine_masks(masks: torch.BoolTensor):
