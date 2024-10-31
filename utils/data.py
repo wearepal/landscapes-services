@@ -60,7 +60,6 @@ class DetectionDataset(Dataset):
     def __getitem__(self, idx):
         sample = self.data[idx]
         return {
-            'label': sample['label'],
             'image': Image.open(sample['image']),
             'class_label': [self.label2id[l] for l in sample['label']],
             'box': sample['box']
