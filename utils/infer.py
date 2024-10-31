@@ -6,6 +6,8 @@ from PIL import Image
 from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection
 from typing import List, Optional
 
+from data import expand2square
+
 
 # Defined functions
 def detect_segment(
@@ -100,28 +102,6 @@ def detect_segment(
             })
 
         return preds
-
-
-def expand2square(image, size):
-    width, height = image.size
-    background_color = (0, 0, 0)
-
-    if (width < size) and (height < size):
-        result = Image.new(image.mode, (size, size), background_color)
-        result.paste(image)
-
-    elif width == height:
-        result = image
-
-    elif width > height:
-        result = Image.new(image.mode, (width, width), background_color)
-        result.paste(image)
-
-    else:
-        result = Image.new(image.mode, (height, height), background_color)
-        result.paste(image)
-
-    return result
 
 
 def refine_masks(masks: torch.BoolTensor):
