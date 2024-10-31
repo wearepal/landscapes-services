@@ -39,7 +39,7 @@ class DetectionDataset(Dataset):
                 continue
 
             image_id = ann['image_id']
-            _ = self.label2id.setdefault(ann['category'], len(self.label2id))
+            _ = self.label2id.setdefault(ann['label'], len(self.label2id))
 
             if image_id not in self.data:
                 self.data[image_id] = {

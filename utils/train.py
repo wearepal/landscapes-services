@@ -18,7 +18,7 @@ def train_model(detector_id, args, train_data, val_data=None):
     def data_collator(features):
         batch = {}
         encoding = det_processor(
-            text=[*list(train_data.label2id.keys()), ""],
+            text=[[*list(train_data.label2id.keys()), ""]],
             images=[
                 expand2square(f['image'], det_model.config.vision_config.image_size) for f in features
             ],
