@@ -6,7 +6,7 @@ from PIL import Image
 from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection
 from typing import List, Optional
 
-from data import expand2square
+from utils.data import expand2square
 
 
 # Defined functions
