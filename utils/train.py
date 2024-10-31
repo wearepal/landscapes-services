@@ -2,8 +2,6 @@ import json
 import os
 import torch
 
-from peft import get_peft_model
-from peft import LoraConfig
 from transformers import Trainer, AutoProcessor, AutoModelForZeroShotObjectDetection
 
 from data import expand2square
@@ -37,16 +35,6 @@ def train_model(detector_id, args, train_data, val_data=None):
 
         batch['return_loss'] = True
         return batch
-
-    if hasattr(args, 'r'):
-        det_model = get_peft_model(
-            det_model,
-            peft_config=LoraConfig(
-                r=args.r,
-                lora_alpha=(args.r * 2),
-                target_modules=['q_proj', 'v_proj']
-            )
-        )
 
     trainer = DetectionTrainer(
         model=det_model,
