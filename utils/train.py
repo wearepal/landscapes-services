@@ -1,7 +1,9 @@
 import json
 import os
 import torch
+import torch.nn as nn
 
+from torchmetrics.detection.mean_ap import MeanAveragePrecision
 from transformers import Trainer, AutoProcessor, AutoModelForZeroShotObjectDetection
 from transformers.image_transforms import corners_to_center_format
 
@@ -17,7 +19,7 @@ def train_model(detector_id, args, train_data, val_data=None):
     def data_collator(features):
         batch = {}
         encoding = det_processor(
-            text=[[*list(train_data.label2id.keys()), ""]],
+            text=[[*list(train_data.label2id.keys()), '']],
             images=[
                 expand2square(f['image'], det_model.config.vision_config.image_size) for f in features
             ],
@@ -36,6 +38,7 @@ def train_model(detector_id, args, train_data, val_data=None):
                 box = corners_to_center_format(box)
 
             batch['labels'].append({
+                'target_sizes': torch.tensor([w, h], dtype=torch.long),
                 'class_labels': torch.tensor(f['class_label'], dtype=torch.long),
                 'boxes': box / torch.tensor([w, h, w, h])
             })
@@ -43,12 +46,40 @@ def train_model(detector_id, args, train_data, val_data=None):
         batch['return_loss'] = True
         return batch
 
+    def compute_metrics(eval_preds):
+        predictions, label_ids = eval_preds
+
+        prob = nn.functional.softmax(predictions[0], -1)
+        scores, labels = prob[..., :-1].max(-1)
+
+        img_h, img_w = label_ids[0].unbind(1)
+        scale_fct = torch.stack([img_w, img_h, img_w, img_h], dim=1)
+
+        preds = [
+            dict(
+                boxes=predictions[3] * scale_fct[:, None, :],
+                scores=scores,
+                labels=labels
+            )
+        ]
+        target = [
+            dict(
+                boxes=label_ids[2],
+                labels=label_ids[1] * scale_fct[:, None, :]
+            )
+        ]
+
+        metric = MeanAveragePrecision(box_format='cxcywh')
+        metric.update(preds, target)
+        return metric.compute()
+
     trainer = DetectionTrainer(
         model=det_model,
         args=args,
         data_collator=data_collator,
         train_dataset=train_data,
-        eval_dataset=val_data if val_data else None
+        eval_dataset=val_data if val_data else None,
+        compute_metrics=compute_metrics
     )
     trainer.train()
 
