@@ -3,6 +3,7 @@ import os
 import torch
 
 from transformers import Trainer, AutoProcessor, AutoModelForZeroShotObjectDetection
+from transformers.image_transforms import corners_to_center_format
 
 from data import expand2square
 from loss import DeformableDetrLoss, DeformableDetrHungarianMatcher
@@ -28,9 +29,15 @@ def train_model(detector_id, args, train_data, val_data=None):
         batch['labels'] = []
         for f in features:
 
+            w, h = f['image'].size
+            box = torch.tensor(f['box'])
+
+            if (box[:, 2:] >= box[:, :2]).all():
+                box = corners_to_center_format(box)
+
             batch['labels'].append({
                 'class_labels': torch.tensor(f['class_label'], dtype=torch.long),
-                'boxes': torch.tensor(f['box'], dtype=torch.float)
+                'boxes': box / torch.tensor([w, h, w, h])
             })
 
         batch['return_loss'] = True
