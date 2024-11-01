@@ -64,8 +64,8 @@ def train_model(detector_id, args, train_data, val_data=None):
         ]
         target = [
             dict(
-                boxes=label_ids[2],
-                labels=label_ids[1] * scale_fct[:, None, :]
+                boxes=label_ids[2] * scale_fct[:, None, :],
+                labels=label_ids[1]
             )
         ]
 
