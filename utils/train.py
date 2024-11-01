@@ -49,7 +49,7 @@ def train_model(detector_id, args, train_data, val_data=None):
     def compute_metrics(eval_preds):
         predictions, label_ids = eval_preds
 
-        prob = nn.functional.softmax(predictions[0], -1)
+        prob = nn.functional.softmax(predictions[1], -1)
         scores, labels = prob[..., :-1].max(-1)
 
         img_h, img_w = label_ids[0].unbind(1)
