@@ -3,11 +3,13 @@ import os
 import torch
 import torch.nn as nn
 
+from PIL import Image
+from torch.utils.data import Dataset
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
 from transformers import Trainer, AutoProcessor, AutoModelForZeroShotObjectDetection
 from transformers.image_transforms import corners_to_center_format
+from tqdm import tqdm
 
-from data import expand2square
 from loss import DeformableDetrLoss, DeformableDetrHungarianMatcher
 
 
@@ -20,9 +22,7 @@ def train_model(detector_id, args, train_data, val_data=None):
         batch = {}
         encoding = det_processor(
             text=[[*list(train_data.label2id.keys()), '']],
-            images=[
-                expand2square(f['image'], det_model.config.vision_config.image_size) for f in features
-            ],
+            images=[f['image'] for f in features],
             return_tensors='pt'
         )
         for k, v in encoding.items():
@@ -156,3 +156,40 @@ class DetectionTrainer(Trainer):
             loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
 
         return (loss, outputs) if return_outputs else loss
+
+
+class DetectionDataset(Dataset):
+
+    def __init__(self, ann_path, split):
+        self.data, self.label2id = dict(), dict()
+        for ann in tqdm(json.load(open(ann_path))):
+
+            if ann['split'] != split:
+                continue
+
+            image_id = ann['image_id']
+            _ = self.label2id.setdefault(ann['label'], len(self.label2id))
+
+            if image_id not in self.data:
+                self.data[image_id] = {
+                    'label': ann['label'],
+                    'image': ann['image'],
+                    'box': ann['box']
+                }
+
+            else:
+                self.data[image_id]['label'].append(ann['label'])
+                self.data[image_id]['box'].append(ann['box'])
+
+        self.data = list(self.data.values())
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        sample = self.data[idx]
+        return {
+            'image': Image.open(sample['image']),
+            'class_label': [self.label2id[l] for l in sample['label']],
+            'box': sample['box']
+        }
