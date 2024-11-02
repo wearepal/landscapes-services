@@ -47,6 +47,8 @@ def train_model(detector_id, args, train_data, val_data=None):
         return batch
 
     metric = MeanAveragePrecision(box_format='cxcywh')
+    metric.warn_on_many_detections = False
+
     def compute_metrics(eval_preds, compute_result):
         predictions, label_ids = eval_preds
 
@@ -65,14 +67,14 @@ def train_model(detector_id, args, train_data, val_data=None):
 
         preds = [
             dict(
-                boxes=(pred_boxes * scale_fct[:, None, :]).squeeze(),
-                scores=scores.squeeze(),
-                labels=labels.squeeze()
+                boxes=(pred_boxes * scale_fct[:, None, :]).squeeze(0),
+                scores=scores.squeeze(0),
+                labels=labels.squeeze(0)
             )
         ]
         target = [
             dict(
-                boxes=(boxes * scale_fct[:, None, :]).squeeze(),
+                boxes=(boxes * scale_fct[:, None, :]).squeeze(0),
                 labels=class_labels
             )
         ]
