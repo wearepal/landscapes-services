@@ -1,8 +1,10 @@
 import json
+import numpy as np
 import os
 import torch
 import torch.nn as nn
 
+from collections import defaultdict
 from PIL import Image
 from torch.utils.data import Dataset
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
@@ -46,32 +48,40 @@ def train_model(detector_id, args, train_data, val_data=None):
         batch['return_loss'] = True
         return batch
 
-    def compute_metrics(eval_preds):
+    metric = MeanAveragePrecision(box_format='cxcywh')
+    def compute_metrics(eval_preds, compute_result):
         predictions, label_ids = eval_preds
 
-        prob = nn.functional.softmax(predictions[1], -1)
+        logits = predictions[0]
+        pred_boxes = predictions[2]
+
+        target_sizes = label_ids[0]['target_sizes']
+        class_labels = label_ids[0]['class_labels']
+        boxes = label_ids[0]['boxes']
+
+        prob = nn.functional.softmax(logits, -1)
         scores, labels = prob[..., :-1].max(-1)
 
-        img_h, img_w = label_ids[0].unbind(1)
+        img_h, img_w = target_sizes.reshape(-1, 2).unbind(1)
         scale_fct = torch.stack([img_w, img_h, img_w, img_h], dim=1)
 
         preds = [
             dict(
-                boxes=predictions[3] * scale_fct[:, None, :],
-                scores=scores,
-                labels=labels
+                boxes=(pred_boxes * scale_fct[:, None, :]).squeeze(),
+                scores=scores.squeeze(),
+                labels=labels.squeeze()
             )
         ]
         target = [
             dict(
-                boxes=label_ids[2] * scale_fct[:, None, :],
-                labels=label_ids[1]
+                boxes=(boxes * scale_fct[:, None, :]).squeeze(),
+                labels=class_labels
             )
         ]
 
-        metric = MeanAveragePrecision(box_format='cxcywh')
         metric.update(preds, target)
-        return metric.compute()
+        if compute_result:
+            return {k: v for k, v in metric.compute().items() if 'map' in k}
 
     trainer = DetectionTrainer(
         model=det_model,
