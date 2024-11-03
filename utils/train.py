@@ -47,7 +47,6 @@ def train_model(detector_id, args, train_data, val_data=None):
         return batch
 
     metric = MeanAveragePrecision(box_format='cxcywh')
-    metric.warn_on_many_detections = False
 
     def compute_metrics(eval_preds, compute_result):
         predictions, label_ids = eval_preds
@@ -64,6 +63,12 @@ def train_model(detector_id, args, train_data, val_data=None):
 
         img_h, img_w = target_sizes.reshape(-1, 2).unbind(1)
         scale_fct = torch.stack([img_w, img_h, img_w, img_h], dim=1)
+
+        scores, indices = torch.topk(scores, 100)
+        indices = indices.squeeze(0)
+
+        labels = labels.index_select(1, indices)
+        pred_boxes = pred_boxes.index_select(1, indices)
 
         preds = [
             dict(
