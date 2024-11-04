@@ -46,7 +46,7 @@ def train_model(detector_id, args, train_data, val_data=None):
         batch['return_loss'] = True
         return batch
 
-    metric = MeanAveragePrecision(box_format='cxcywh', max_detection_thresholds=[1, 10, 300])
+    metric = MeanAveragePrecision(box_format='cxcywh')
     metric.warn_on_many_detections = False
 
     def compute_metrics(eval_preds, compute_result):
