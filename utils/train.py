@@ -1,7 +1,6 @@
 import json
 import os
 import torch
-import torch.nn as nn
 
 from PIL import Image
 from torch.utils.data import Dataset
