@@ -59,11 +59,15 @@ def train_model(detector_id, args, train_data, val_data=None):
         class_labels = label_ids[0]['class_labels']
         boxes = label_ids[0]['boxes']
 
-        prob = nn.functional.softmax(logits, -1)
-        scores, labels = prob[..., :-1].max(-1)
+        probs = torch.max(logits[..., :-1], dim=-1)
+        scores = torch.sigmoid(probs.values)
+        labels = probs.indices
 
+        # Rescale coordinates, image is padded to square for inference,
+        # that is why we need to scale boxes to the max size
         img_h, img_w = target_sizes.reshape(-1, 2).unbind(1)
-        scale_fct = torch.stack([img_w, img_h, img_w, img_h], dim=1)
+        size = torch.max(img_h, img_w)
+        scale_fct = torch.stack([size, size, size, size], dim=1)
 
         preds = [
             dict(
