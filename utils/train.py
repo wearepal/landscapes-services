@@ -70,15 +70,15 @@ def train_model(detector_id, args, train_data, val_data=None):
 
         preds = [
             dict(
-                boxes=(pred_boxes * scale_fct[:, None, :]).squeeze(0),
-                scores=scores.squeeze(0),
-                labels=labels.squeeze(0)
+                boxes=(pred_boxes * scale_fct[:, None, :]).squeeze(0).cpu(),
+                scores=scores.squeeze(0).cpu(),
+                labels=labels.squeeze(0).cpu()
             )
         ]
         target = [
             dict(
-                boxes=(boxes * scale_fct[:, None, :]).squeeze(0),
-                labels=class_labels
+                boxes=(boxes * scale_fct[:, None, :]).squeeze(0).cpu(),
+                labels=class_labels.cpu()
             )
         ]
 
