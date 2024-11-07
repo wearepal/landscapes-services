@@ -42,7 +42,7 @@ async def v1(
                 # detect and segment the image
                 predictions = detect_segment(
                     image_path=img_path,
-                    labels=[[f'A photo of a {label.strip()}' for label in labels.split(',')]],
+                    labels=[[f'a photo of a {label.strip()}' for label in labels.split(',')]],
                     confidence=(confidence / 100),
                     detector_id=detector_id,
                     segmenter_id=segmenter_id,
