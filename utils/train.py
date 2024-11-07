@@ -20,7 +20,7 @@ def train_model(detector_id, args, train_data, val_data=None):
     def data_collator(features):
         batch = {}
         encoding = det_processor(
-            text=[[*list(train_data.label2id.keys()), '']],
+            text=[[*[f'A photo of a {label}' for label in train_data.label2id.keys()], '']],
             images=[f['image'] for f in features],
             return_tensors='pt'
         )
