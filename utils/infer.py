@@ -28,7 +28,6 @@ def detect_segment(
         # Target image sizes (height, width) to rescale box predictions [batch_size, 2]
         image = Image.open(image_path)
         target_sizes = torch.tensor([image.size[::-1]])
-        image = expand2square(image, det_model.config.vision_config.image_size)
 
         inputs = det_processor(text=labels, images=image, return_tensors='pt')
         for k, v in inputs.items():
@@ -100,28 +99,6 @@ def detect_segment(
             })
 
         return preds
-
-
-def expand2square(image, size):
-    width, height = image.size
-    background_color = (0, 0, 0)
-
-    if (width < size) and (height < size):
-        result = Image.new(image.mode, (size, size), background_color)
-        result.paste(image)
-
-    elif width == height:
-        result = image
-
-    elif width > height:
-        result = Image.new(image.mode, (width, width), background_color)
-        result.paste(image)
-
-    else:
-        result = Image.new(image.mode, (height, height), background_color)
-        result.paste(image)
-
-    return result
 
 
 def refine_masks(masks: torch.BoolTensor):
