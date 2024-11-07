@@ -19,6 +19,8 @@ WORKDIR /app
 # Copy the requirements file to the container
 COPY requirements.txt .
 
+RUN apt-get update && apt-get install -y git
+
 # Upgrade pip to the latest version
 RUN pip install --upgrade pip
 
