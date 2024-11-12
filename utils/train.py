@@ -177,12 +177,11 @@ class DetectionDataset(Dataset):
         self.data, self.label2id = dict(), dict()
         for ann in tqdm(json.load(open(ann_path))):
 
+            _ = self.label2id.setdefault(ann['label'], len(self.label2id))
             if ann['split'] != split:
                 continue
 
             image_id = ann['image_id']
-            _ = self.label2id.setdefault(ann['label'], len(self.label2id))
-
             if image_id not in self.data:
                 self.data[image_id] = {
                     'label': ann['label'],
