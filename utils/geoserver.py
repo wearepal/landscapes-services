@@ -1,6 +1,8 @@
 import requests
 import uuid
 
+
+# Defined functions
 def retrieve_tiff(
         bbox: str,
         width: int,
@@ -31,7 +33,7 @@ def retrieve_tiff(
     # Send the request
     response = requests.get(url, params=params)
 
-    # generate a unique name for the image
+    # Generate a unique name for the image
     id = str(uuid.uuid4())
 
     # Save the image with a unique name

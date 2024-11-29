@@ -1,9 +1,11 @@
-from fastapi import FastAPI, HTTPException
 from os import remove as rm
-from utils.infer import detect_segment
-from transformers import set_seed
-from utils.geoserver import retrieve_tiff
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from transformers import set_seed
+
+from utils.geoserver import retrieve_tiff
+from utils.infer import detect_segment
+
 
 app = FastAPI()
 
@@ -22,7 +24,7 @@ async def v1(
         labels: str, 
         confidence: float = 10.0, 
         detector_id: str = 'google/owlv2-base-patch16', 
-        segmenter_id: str = 'facebook/sam-vit-base', 
+        segmenter_id: str = 'YxZhang/evf-sam2', 
         seed : int = 0,
         bbox: str = None,
         width: int = 0,
@@ -54,12 +56,14 @@ async def v1(
 
                 # return the predictions
                 return {"predictions": predictions}
-            
+
             case default:
                 raise HTTPException(status_code=404, detail="Model not found")
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=5001)

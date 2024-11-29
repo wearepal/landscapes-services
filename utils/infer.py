@@ -1,10 +1,15 @@
 import numpy as np
 import rasterio
 import torch
+import torch.nn.functional as F
 
 from PIL import Image
-from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection
+from torchvision import transforms
+from torchvision.transforms.functional import InterpolationMode
+from transformers import AutoTokenizer, AutoProcessor, AutoModelForZeroShotObjectDetection
 from typing import List, Optional
+
+from model.segment_anything.utils.transforms import ResizeLongestSide
 
 
 # Defined functions
@@ -20,7 +25,9 @@ def detect_segment(
 
     det_processor = AutoProcessor.from_pretrained(detector_id)
     det_model = AutoModelForZeroShotObjectDetection.from_pretrained(detector_id)
+
     det_model = det_model.to(device)
+    det_model.eval()
 
     preds = []
     with torch.no_grad():
@@ -48,38 +55,56 @@ def detect_segment(
         del det_model
         torch.cuda.empty_cache()
 
-        if 'sam2' in segmenter_id:
-            from sam2.sam2_image_predictor import SAM2ImagePredictor
-            seg_model = SAM2ImagePredictor.from_pretrained(segmenter_id)
+        tokenizer = AutoTokenizer.from_pretrained(segmenter_id)
 
-            seg_model.set_image(image)
-            masks, _, _ = seg_model.predict(box=detections['boxes'], multimask_output=False)
-            masks = torch.tensor(masks, device=device)
+        if 'sam2' in segmenter_id:
+            from model.evf_sam2 import EvfSam2Model
+            seg_model = EvfSam2Model.from_pretrained(segmenter_id, low_cpu_mem_usage=True)
+            model_type = "sam2"
 
         else:
-            from transformers import AutoModelForMaskGeneration
-            seg_processor = AutoProcessor.from_pretrained(segmenter_id)
-            seg_model = AutoModelForMaskGeneration.from_pretrained(segmenter_id)
-            seg_model = seg_model.to(device)
+            from model.evf_sam import EvfSamModel
+            seg_model = EvfSamModel.from_pretrained(segmenter_id, low_cpu_mem_usage=True)
+            model_type = "ori"
 
-            inputs = seg_processor(images=image, input_boxes=[detections['boxes'].tolist()], return_tensors='pt')
-            for k, v in inputs.items():
-                inputs[k] = v.to(device)
-            outputs = seg_model(**inputs)
+        seg_model = seg_model.to(device)
+        seg_model.eval()
 
-            masks = seg_processor.post_process_masks(
-                masks=outputs['pred_masks'],
-                original_sizes=inputs['original_sizes'],
-                reshaped_input_sizes=inputs['reshaped_input_sizes']
+        for i, box in enumerate(detections['boxes'].int().tolist()):
+
+            # preprocess
+            xmin, ymin, xmax, ymax = box
+            roi = image.crop((xmin, ymin, xmax, ymax))
+
+            roi = roi.convert('RGB')
+            roi = np.array(roi)
+
+            image_beit = beit3_preprocess(roi, 224).to(dtype=seg_model.dtype, device=seg_model.device)
+
+            image_sam, resize_shape = sam_preprocess(roi, model_type=model_type)
+            image_sam = image_sam.to(dtype=seg_model.dtype, device=seg_model.device)
+
+            prompt = labels[0][detections['labels'][i].item()]
+            input_ids = tokenizer(f'[semantic] {prompt}', return_tensors="pt")["input_ids"].to(seg_model.device)
+
+            # infer
+            mask = seg_model.inference(
+                image_sam.unsqueeze(0),
+                image_beit.unsqueeze(0),
+                input_ids,
+                resize_list=[resize_shape],
+                original_size_list=[roi.shape[:2]],
             )
-            masks = masks[0]
 
-        del seg_model
-        torch.cuda.empty_cache()
+            mask = mask.detach().cpu().numpy()[0]
+            mask = mask > 0
 
-        for i, mask in enumerate(refine_masks(masks)):
+            try:
+                full_mask = np.zeros((image.size[1], image.size[0]), dtype=np.uint8)
+                full_mask[ymin:ymax, xmin:xmax] = mask
+            except:
+                continue
 
-            xmin, ymin, xmax, ymax = detections['boxes'][i].int().tolist()
             if transform:
                 src = rasterio.open(image_path)
 
@@ -87,22 +112,69 @@ def detect_segment(
                 xmax, ymax = src.xy(xmax, ymax)
                 ymin, ymax = ymax, ymin
 
-                xindex, yindex = np.where(mask == 1)
+                xindex, yindex = np.where(full_mask == 1)
                 xindex, yindex = src.xy(xindex, yindex)
-                mask = np.hstack((xindex[..., np.newaxis], yindex[..., np.newaxis]))
+                full_mask = np.hstack((xindex[..., np.newaxis], yindex[..., np.newaxis]))
 
             preds.append({
                 'confidence': detections['scores'][i].item() * 100,
-                'label': labels[0][detections['labels'][i].item()],
                 'box': {'xmin': xmin, 'ymin': ymin, 'xmax': xmax, 'ymax': ymax},
-                'mask': mask.tolist()
+                'label': prompt,
+                'mask': full_mask.tolist()
             })
+
+        del seg_model
+        torch.cuda.empty_cache()
+
+        if len(preds) < 1:
+            return None
 
         return preds
 
 
-def refine_masks(masks: torch.BoolTensor):
-    masks = masks.permute(0, 2, 3, 1)
-    masks = masks.prod(axis=-1)
-    masks = (masks.cpu() > 0).numpy()
-    return masks.astype(np.uint8)
+def sam_preprocess(
+    x: np.ndarray,
+    pixel_mean=torch.Tensor([123.675, 116.28, 103.53]).view(-1, 1, 1),
+    pixel_std=torch.Tensor([58.395, 57.12, 57.375]).view(-1, 1, 1),
+    img_size=1024,
+    model_type="ori") -> torch.Tensor:
+    '''
+    preprocess of Segment Anything Model, including scaling, normalization and padding.  
+    preprocess differs between SAM and Effi-SAM, where Effi-SAM use no padding.
+    input: ndarray
+    output: torch.Tensor
+    '''
+    assert img_size==1024, \
+        "both SAM and Effi-SAM receive images of size 1024^2, don't change this setting unless you're sure that your employed model works well with another size."
+
+    # Normalize colors
+    if model_type=="ori":
+        x = ResizeLongestSide(img_size).apply_image(x)
+        h, w = resize_shape = x.shape[:2]
+        x = torch.from_numpy(x).permute(2,0,1).contiguous()
+        x = (x - pixel_mean) / pixel_std
+        # Pad
+        padh = img_size - h
+        padw = img_size - w
+        x = F.pad(x, (0, padw, 0, padh))
+    else:
+        x = torch.from_numpy(x).permute(2,0,1).contiguous()
+        x = F.interpolate(x.unsqueeze(0), (img_size, img_size), mode="bilinear", align_corners=False).squeeze(0)
+        x = (x - pixel_mean) / pixel_std
+        resize_shape = None
+
+    return x, resize_shape
+
+
+def beit3_preprocess(x: np.ndarray, img_size=224) -> torch.Tensor:
+    '''
+    preprocess for BEIT-3 model.
+    input: ndarray
+    output: torch.Tensor
+    '''
+    beit_preprocess = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Resize((img_size, img_size), interpolation=InterpolationMode.BICUBIC, antialias=None), 
+        transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))
+    ])
+    return beit_preprocess(x)
