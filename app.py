@@ -22,7 +22,7 @@ app.add_middleware(
 async def v1(
         model_id: str, 
         labels: str, 
-        confidence: float = 10.0, 
+        confidence: float = 5.0, 
         detector_id: str = 'google/owlv2-base-patch16', 
         segmenter_id: str = 'YxZhang/evf-sam2', 
         seed : int = 0,
