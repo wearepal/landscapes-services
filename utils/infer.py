@@ -34,7 +34,7 @@ def detect_segment(
 
         # Target image sizes (height, width) to rescale box predictions [batch_size, 2]
         image = Image.open(image_path)
-        target_sizes = torch.tensor([image.size[::-1]])
+        target_width, target_height = image.size
 
         inputs = det_processor(text=labels, images=image, return_tensors='pt')
         for k, v in inputs.items():
@@ -45,7 +45,7 @@ def detect_segment(
         detections = det_processor.post_process_object_detection(
             outputs, 
             threshold=confidence, 
-            target_sizes=target_sizes
+            target_sizes=[(target_height, target_width)]
         )
         detections = detections[0]
 
@@ -74,8 +74,12 @@ def detect_segment(
 
             # preprocess
             xmin, ymin, xmax, ymax = box
-            roi = image.crop((xmin, ymin, xmax, ymax))
+            if xmin < 0 or ymin < 0 or xmax <= xmin or ymax <= ymin:
+                continue
+            if xmax > target_width or ymax > target_height:
+                continue
 
+            roi = image.crop((xmin, ymin, xmax, ymax))
             roi = roi.convert('RGB')
             roi = np.array(roi)
 
@@ -99,11 +103,8 @@ def detect_segment(
             mask = mask.detach().cpu().numpy()[0]
             mask = mask > 0
 
-            try:
-                full_mask = np.zeros((image.size[1], image.size[0]), dtype=np.uint8)
-                full_mask[ymin:ymax, xmin:xmax] = mask
-            except:
-                continue
+            full_mask = np.zeros((image.size[1], image.size[0]), dtype=np.uint8)
+            full_mask[ymin:ymax, xmin:xmax] = mask
 
             if transform:
                 src = rasterio.open(image_path)
