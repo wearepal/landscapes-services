@@ -78,6 +78,8 @@ def detect_segment(
                 continue
             if xmax > target_width or ymax > target_height:
                 continue
+            if (xmax - xmin) * (ymax - ymin) <= 0:
+                continue
 
             roi = image.crop((xmin, ymin, xmax, ymax))
             roi = roi.convert('RGB')
