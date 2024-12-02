@@ -37,9 +37,7 @@ def detect_segment(
         target_width, target_height = image.size
 
         inputs = det_processor(text=labels, images=image, return_tensors='pt')
-        for k, v in inputs.items():
-            inputs[k] = v.to(device)
-        outputs = det_model(**inputs)
+        outputs = det_model(**inputs.to(device))
 
         # Convert outputs (bounding boxes and class logits) to Pascal VOC format (xmin, ymin, xmax, ymax)
         detections = det_processor.post_process_object_detection(
