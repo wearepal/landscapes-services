@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from PIL import Image
 from torchvision import transforms
 from torchvision.transforms.functional import InterpolationMode
-from transformers import AutoTokenizer, AutoProcessor, AutoModelForZeroShotObjectDetection
+from transformers import AutoTokenizer, AutoProcessor, AutoModelForZeroShotObjectDetection, BlipForImageTextRetrieval
 from typing import List, Optional
 
 from model.segment_anything.utils.transforms import ResizeLongestSide
@@ -16,7 +16,8 @@ from model.segment_anything.utils.transforms import ResizeLongestSide
 def detect_segment(
     image_path: str,
     labels: List[List[str]],
-    confidence: float = 0.1,
+    det_conf: float = 0.05,
+    clf_conf: float = 0.7,
     detector_id: Optional[str] = None,
     segmenter_id: Optional[str] = None,
     transform: Optional[bool] = False
@@ -42,7 +43,7 @@ def detect_segment(
         # Convert outputs (bounding boxes and class logits) to Pascal VOC format (xmin, ymin, xmax, ymax)
         detections = det_processor.post_process_object_detection(
             outputs, 
-            threshold=confidence, 
+            threshold=det_conf, 
             target_sizes=[(target_height, target_width)]
         )
         detections = detections[0]
@@ -59,7 +60,6 @@ def detect_segment(
             from model.evf_sam2 import EvfSam2Model
             seg_model = EvfSam2Model.from_pretrained(segmenter_id, low_cpu_mem_usage=True)
             model_type = "sam2"
-
         else:
             from model.evf_sam import EvfSamModel
             seg_model = EvfSamModel.from_pretrained(segmenter_id, low_cpu_mem_usage=True)
@@ -68,7 +68,11 @@ def detect_segment(
         seg_model = seg_model.to(device)
         seg_model.eval()
 
-        for i, box in enumerate(detections['boxes'].int().tolist()):
+        clf_processor = AutoProcessor.from_pretrained(clf_id)
+        clf_model = BlipForImageTextRetrieval.from_pretrained(clf_id)
+        clf_model.eval()
+
+        for i, box in enumerate(tqdm(detections['boxes'].int().tolist())):
 
             # preprocess
             xmin, ymin, xmax, ymax = box
@@ -101,6 +105,13 @@ def detect_segment(
 
             mask = mask.detach().cpu().numpy()[0]
             mask = mask > 0
+
+            inputs = clf_processor(images=roi * mask[:, :, np.newaxis], text=prompt, return_tensors='pt')
+            logits_per_image = torch.nn.functional.softmax(clf_model(**inputs).itm_score, dim=1)
+
+            probs = logits_per_image.softmax(dim=1)  # we can take the softmax to get the label probabilities
+            if probs[0][1] < clf_conf:
+                continue
 
             full_mask = np.zeros((image.size[1], image.size[0]), dtype=np.uint8)
             full_mask[ymin:ymax, xmin:xmax] = mask
