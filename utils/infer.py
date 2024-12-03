@@ -20,6 +20,7 @@ def detect_segment(
     clf_conf: float = 0.7,
     detector_id: Optional[str] = None,
     segmenter_id: Optional[str] = None,
+    classifier_id: Optional[str] = None,
     transform: Optional[bool] = False
 ):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -68,8 +69,8 @@ def detect_segment(
         seg_model = seg_model.to(device)
         seg_model.eval()
 
-        clf_processor = AutoProcessor.from_pretrained(clf_id)
-        clf_model = BlipForImageTextRetrieval.from_pretrained(clf_id)
+        clf_processor = AutoProcessor.from_pretrained(classifier_id)
+        clf_model = BlipForImageTextRetrieval.from_pretrained(classifier_id)
         clf_model.eval()
 
         for i, box in enumerate(tqdm(detections['boxes'].int().tolist())):
