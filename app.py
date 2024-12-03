@@ -22,7 +22,8 @@ app.add_middleware(
 async def v1(
         model_id: str, 
         labels: str, 
-        confidence: float = 5.0, 
+        det_conf: float = 5.0, 
+        clf_conf: float = 70.0, 
         detector_id: str = 'google/owlv2-base-patch16', 
         segmenter_id: str = 'YxZhang/evf-sam2', 
         seed : int = 0,
@@ -45,7 +46,8 @@ async def v1(
                 predictions = detect_segment(
                     image_path=img_path,
                     labels=[[f'a centered satellite image of a {label.strip()}' for label in labels.split(',')]],
-                    confidence=(confidence / 100),
+                    det_conf=(det_conf / 100),
+                    clf_conf=(clf_conf / 100),
                     detector_id=detector_id,
                     segmenter_id=segmenter_id,
                     transform=True
