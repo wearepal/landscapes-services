@@ -80,16 +80,15 @@ def detect_segment(
                 continue
 
             roi = image.crop((xmin, ymin, xmax, ymax))
-            roi = roi.convert('RGB')
-            roi = np.array(roi)
+            roi = np.array(roi.convert('RGB'))
 
             image_beit = beit3_preprocess(roi, 224).to(dtype=seg_model.dtype, device=seg_model.device)
-
             image_sam, resize_shape = sam_preprocess(roi, model_type=model_type)
             image_sam = image_sam.to(dtype=seg_model.dtype, device=seg_model.device)
 
             prompt = labels[0][detections['labels'][i].item()]
-            input_ids = tokenizer(f'[semantic] {prompt}', return_tensors="pt")["input_ids"].to(seg_model.device)
+            input_ids = tokenizer(f'[semantic] {prompt}', return_tensors='pt')
+            input_ids = input_ids['input_ids'].to(seg_model.device)
 
             # infer
             mask = seg_model.inference(
