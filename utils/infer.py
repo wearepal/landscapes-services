@@ -136,6 +136,7 @@ def detect_segment(
             })
 
         del seg_model
+        del det_model
         torch.cuda.empty_cache()
 
         if len(preds) < 1:
