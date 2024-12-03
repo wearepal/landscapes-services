@@ -135,8 +135,7 @@ def detect_segment(
                 'mask': full_mask.tolist()
             })
 
-        del seg_model
-        del det_model
+        del seg_model, det_model
         torch.cuda.empty_cache()
 
         if len(preds) < 1:
