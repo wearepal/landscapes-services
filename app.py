@@ -26,6 +26,7 @@ async def v1(
         clf_conf: float = 70.0, 
         detector_id: str = 'google/owlv2-base-patch16', 
         segmenter_id: str = 'YxZhang/evf-sam2', 
+        clf_id: str = 'Salesforce/blip-itm-base-coco', 
         seed : int = 0,
         bbox: str = None,
         width: int = 0,
@@ -50,6 +51,7 @@ async def v1(
                     clf_conf=(clf_conf / 100),
                     detector_id=detector_id,
                     segmenter_id=segmenter_id,
+                    clf_id=clf_id,
                     transform=True
                 )
 
