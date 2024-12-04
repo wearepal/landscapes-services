@@ -75,9 +75,10 @@ def detect_segment(
         seg_model = seg_model.to(device)
         seg_model.eval()
 
-        clf_processor = AutoProcessor.from_pretrained(classifier_id)
-        clf_model = BlipForImageTextRetrieval.from_pretrained(classifier_id)
-        clf_model.eval()
+        if clf_conf > 0:
+            clf_processor = AutoProcessor.from_pretrained(classifier_id)
+            clf_model = BlipForImageTextRetrieval.from_pretrained(classifier_id)
+            clf_model.eval()
 
         for i, box in enumerate(tqdm(detections['boxes'].int().tolist())):
 
@@ -113,12 +114,13 @@ def detect_segment(
             mask = mask.detach().cpu().numpy()[0]
             mask = mask > 0
 
-            inputs = clf_processor(images=roi * mask[:, :, np.newaxis], text=prompt, return_tensors='pt')
-            logits_per_image = clf_model(**inputs).itm_score
-
-            probs = logits_per_image.softmax(dim=1)  # we can take the softmax to get the label probabilities
-            if probs[0][1] < clf_conf:
-                continue
+            if clf_conf > 0:
+                inputs = clf_processor(images=roi * mask[:, :, np.newaxis], text=prompt, return_tensors='pt')
+                logits_per_image = clf_model(**inputs).itm_score
+    
+                probs = logits_per_image.softmax(dim=1)  # we can take the softmax to get the label probabilities
+                if probs[0][1] < clf_conf:
+                    continue
 
             full_mask = np.zeros((image.size[1], image.size[0]), dtype=np.uint8)
             full_mask[ymin:ymax, xmin:xmax] = mask
