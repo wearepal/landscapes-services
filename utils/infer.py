@@ -3,6 +3,7 @@ import rasterio
 import torch
 import torch.nn.functional as F
 
+from collections import defaultdict
 from PIL import Image
 from torchvision import transforms
 from torchvision.transforms.functional import InterpolationMode
@@ -75,11 +76,7 @@ def detect_segment(
         seg_model = seg_model.to(device)
         seg_model.eval()
 
-        if clf_conf > 0:
-            clf_processor = AutoProcessor.from_pretrained(classifier_id)
-            clf_model = BlipForImageTextRetrieval.from_pretrained(classifier_id)
-            clf_model.eval()
-
+        all_roi = defaultdict(list)
         for i, box in enumerate(tqdm(detections['boxes'].int().tolist())):
 
             # preprocess
@@ -115,12 +112,8 @@ def detect_segment(
             mask = mask > 0
 
             if clf_conf > 0:
-                inputs = clf_processor(images=roi * mask[:, :, np.newaxis], text=prompt, return_tensors='pt')
-                logits_per_image = clf_model(**inputs).itm_score
-    
-                probs = logits_per_image.softmax(dim=1)  # we can take the softmax to get the label probabilities
-                if probs[0][1] < clf_conf:
-                    continue
+                all_roi['image'].append(roi * mask[:, :, np.newaxis])
+                all_roi['text'].append(prompt)
 
             full_mask = np.zeros((image.size[1], image.size[0]), dtype=np.uint8)
             full_mask[ymin:ymax, xmin:xmax] = mask
@@ -146,6 +139,23 @@ def detect_segment(
         del seg_model
         torch.cuda.empty_cache()
 
+        if clf_conf > 0: 
+            clf_processor = AutoProcessor.from_pretrained(clf_id)
+            clf_model = BlipForImageTextRetrieval.from_pretrained(clf_id)
+
+            clf_model = clf_model.to(device)
+            clf_model.eval()
+
+            inputs = clf_processor(images=all_roi['image'], text=all_roi['text'], return_tensors='pt')
+            logits_per_image = clf_model(**inputs.to(device)).itm_score
+
+            probs = logits_per_image.softmax(dim=1)  # we can take the softmax to get the label probabilities
+            indices = torch.nonzero(probs.argmax(dim=1)).flatten()
+            preds = [preds[i] for i in indices]
+
+            del clf_model
+            torch.cuda.empty_cache()
+        
         if len(preds) < 1:
             return None
 
