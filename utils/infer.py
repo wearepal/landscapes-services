@@ -8,6 +8,7 @@ from torchvision import transforms
 from torchvision.transforms.functional import InterpolationMode
 from transformers import AutoTokenizer, AutoProcessor, AutoModelForZeroShotObjectDetection, BlipForImageTextRetrieval
 from typing import List, Optional
+from tqdm import tqdm
 
 from model.segment_anything.utils.transforms import ResizeLongestSide
 
