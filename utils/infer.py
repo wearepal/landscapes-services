@@ -6,8 +6,8 @@ import torch.nn.functional as F
 from PIL import Image
 from torchvision import transforms
 from torchvision.transforms.functional import InterpolationMode
-from transformers import AutoTokenizer, AutoProcessor, AutoModelForZeroShotObjectDetection, BlipForImageTextRetrieval
 from tqdm import tqdm
+from transformers import AutoTokenizer, AutoProcessor, AutoModelForZeroShotObjectDetection, BlipForImageTextRetrieval
 from typing import List, Optional
 
 from model.segment_anything.utils.transforms import ResizeLongestSide
