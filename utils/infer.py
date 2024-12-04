@@ -23,7 +23,7 @@ def detect_segment(
     image_path: str,
     labels: List[List[str]],
     det_conf: float = 0.05,
-    clf_conf: float = 0.7,
+    clf_conf: float = 0.65,
     detector_id: Optional[str] = None,
     segmenter_id: Optional[str] = None,
     classifier_id: Optional[str] = None,
