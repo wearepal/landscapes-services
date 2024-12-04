@@ -1,13 +1,19 @@
-# Use an official Python image as the base image
-FROM python:3.10-slim
+FROM nvidia/cuda:12.2.0-cudnn8-devel-ubuntu20.04
 
-# Install system dependencies, GDAL, and other required libraries
+# Install Python and other system dependencies
 RUN apt-get update && apt-get install -y \
+    python3.10 \
+    python3-pip \
+    python3-dev \
     gdal-bin \
     libgdal-dev \
-    python3-dev \
     build-essential \
-    && apt-get clean
+    git \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Set Python 3.10 as the default
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.10 1
+RUN update-alternatives --install /usr/bin/pip pip /usr/bin/pip3 1
 
 # Set GDAL environment variables
 ENV CPLUS_INCLUDE_PATH=/usr/include/gdal
