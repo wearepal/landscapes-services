@@ -20,6 +20,7 @@ from model.segment_anything.utils.transforms import ResizeLongestSide
 
 
 # Defined functions
+@torch.no_grad()
 def detect_segment(
     image_path: str,
     labels: List[List[str]],
@@ -32,134 +33,133 @@ def detect_segment(
 ):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
+    # Target image sizes (height, width) to rescale box predictions [batch_size, 2]
+    image = Image.open(image_path)
+    image = np.array(image.convert('RGB'))
+    target_height, target_width, _ = image.shape
+
+    preds = []
+
     det_processor = AutoProcessor.from_pretrained(detector_id)
     det_model = AutoModelForZeroShotObjectDetection.from_pretrained(detector_id)
 
     det_model = det_model.to(device)
     det_model.eval()
 
-    preds = []
-    with torch.no_grad():
+    inputs = det_processor(text=labels, images=image, return_tensors='pt')
+    outputs = det_model(**inputs.to(device))
 
-        # Target image sizes (height, width) to rescale box predictions [batch_size, 2]
-        image = Image.open(image_path)
-        target_width, target_height = image.size
+    # Convert outputs (bounding boxes and class logits) to Pascal VOC format (xmin, ymin, xmax, ymax)
+    detections = det_processor.post_process_object_detection(
+        outputs, 
+        threshold=det_conf, 
+        target_sizes=[(target_height, target_width)]
+    )
+    detections = detections[0]
 
-        inputs = det_processor(text=labels, images=image, return_tensors='pt')
-        outputs = det_model(**inputs.to(device))
+    if len(detections['boxes']) < 1:
+        return None
 
-        # Convert outputs (bounding boxes and class logits) to Pascal VOC format (xmin, ymin, xmax, ymax)
-        detections = det_processor.post_process_object_detection(
-            outputs, 
-            threshold=det_conf, 
-            target_sizes=[(target_height, target_width)]
+    del det_model
+    torch.cuda.empty_cache()
+
+    tokenizer = AutoTokenizer.from_pretrained(segmenter_id)
+
+    if 'sam2' in segmenter_id:
+        from model.evf_sam2 import EvfSam2Model
+        seg_model = EvfSam2Model.from_pretrained(segmenter_id, low_cpu_mem_usage=True)
+        model_type = "sam2"
+    else:
+        from model.evf_sam import EvfSamModel
+        seg_model = EvfSamModel.from_pretrained(segmenter_id, low_cpu_mem_usage=True)
+        model_type = "ori"
+
+    seg_model = seg_model.to(device)
+    seg_model.eval()
+
+    all_roi = defaultdict(list)
+    for i, box in enumerate(tqdm(detections['boxes'].int().tolist())):
+
+        # preprocess
+        xmin, ymin, xmax, ymax = box
+        if xmin < 0 or ymin < 0 or xmax <= xmin or ymax <= ymin:
+            continue
+        if xmax > target_width or ymax > target_height:
+            continue
+        if (xmax - xmin) * (ymax - ymin) <= 0:
+            continue
+
+        roi = image[ymin:ymax, xmin:xmax]
+
+        image_beit = beit3_preprocess(roi, 224).to(dtype=seg_model.dtype, device=seg_model.device)
+        image_sam, resize_shape = sam_preprocess(roi, model_type=model_type)
+        image_sam = image_sam.to(dtype=seg_model.dtype, device=seg_model.device)
+
+        prompt = labels[0][detections['labels'][i].item()]
+        input_ids = tokenizer(f'[semantic] {prompt}', return_tensors='pt')
+        input_ids = input_ids['input_ids'].to(seg_model.device)
+
+        # infer
+        mask = seg_model.inference(
+            image_sam.unsqueeze(0),
+            image_beit.unsqueeze(0),
+            input_ids,
+            resize_list=[resize_shape],
+            original_size_list=[roi.shape[:2]],
         )
-        detections = detections[0]
 
-        if len(detections['boxes']) < 1:
-            return None
+        mask = mask.detach().cpu().numpy()[0]
+        mask = mask > 0
 
-        del det_model
+        if clf_conf > 0:
+            all_roi['image'].append(roi * mask[:, :, np.newaxis])
+            all_roi['text'].append(prompt)
+
+        full_mask = np.zeros((target_height, target_width), dtype=np.uint8)
+        full_mask[ymin:ymax, xmin:xmax] = mask
+
+        if transform:
+            src = rasterio.open(image_path)
+
+            xmin, ymin = src.xy(xmin, ymin)
+            xmax, ymax = src.xy(xmax, ymax)
+            ymin, ymax = ymax, ymin
+
+            xindex, yindex = np.where(full_mask == 1)
+            xindex, yindex = src.xy(xindex, yindex)
+            full_mask = np.hstack((xindex[..., np.newaxis], yindex[..., np.newaxis]))
+
+        preds.append({
+            'confidence': detections['scores'][i].item() * 100,
+            'box': {'xmin': xmin, 'ymin': ymin, 'xmax': xmax, 'ymax': ymax},
+            'label': prompt,
+            'mask': full_mask.tolist()
+        })
+
+    del seg_model
+    torch.cuda.empty_cache()
+
+    if clf_conf > 0: 
+        clf_processor = AutoProcessor.from_pretrained(classifier_id)
+        clf_model = BlipForImageTextRetrieval.from_pretrained(classifier_id)
+
+        clf_model = clf_model.to(device)
+        clf_model.eval()
+
+        inputs = clf_processor(images=all_roi['image'], text=all_roi['text'], return_tensors='pt')
+        logits_per_image = clf_model(**inputs.to(device)).itm_score
+
+        probs = logits_per_image.softmax(dim=1)  # we can take the softmax to get the label probabilities
+        indices = torch.nonzero(probs[:, 1] >= clf_conf).flatten()
+        preds = [preds[i] for i in indices]
+
+        del clf_model
         torch.cuda.empty_cache()
 
-        tokenizer = AutoTokenizer.from_pretrained(segmenter_id)
+    if len(preds) < 1:
+        return None
 
-        if 'sam2' in segmenter_id:
-            from model.evf_sam2 import EvfSam2Model
-            seg_model = EvfSam2Model.from_pretrained(segmenter_id, low_cpu_mem_usage=True)
-            model_type = "sam2"
-        else:
-            from model.evf_sam import EvfSamModel
-            seg_model = EvfSamModel.from_pretrained(segmenter_id, low_cpu_mem_usage=True)
-            model_type = "ori"
-
-        seg_model = seg_model.to(device)
-        seg_model.eval()
-
-        all_roi = defaultdict(list)
-        for i, box in enumerate(tqdm(detections['boxes'].int().tolist())):
-
-            # preprocess
-            xmin, ymin, xmax, ymax = box
-            if xmin < 0 or ymin < 0 or xmax <= xmin or ymax <= ymin:
-                continue
-            if xmax > target_width or ymax > target_height:
-                continue
-            if (xmax - xmin) * (ymax - ymin) <= 0:
-                continue
-
-            roi = image.crop((xmin, ymin, xmax, ymax))
-            roi = np.array(roi.convert('RGB'))
-
-            image_beit = beit3_preprocess(roi, 224).to(dtype=seg_model.dtype, device=seg_model.device)
-            image_sam, resize_shape = sam_preprocess(roi, model_type=model_type)
-            image_sam = image_sam.to(dtype=seg_model.dtype, device=seg_model.device)
-
-            prompt = labels[0][detections['labels'][i].item()]
-            input_ids = tokenizer(f'[semantic] {prompt}', return_tensors='pt')
-            input_ids = input_ids['input_ids'].to(seg_model.device)
-
-            # infer
-            mask = seg_model.inference(
-                image_sam.unsqueeze(0),
-                image_beit.unsqueeze(0),
-                input_ids,
-                resize_list=[resize_shape],
-                original_size_list=[roi.shape[:2]],
-            )
-
-            mask = mask.detach().cpu().numpy()[0]
-            mask = mask > 0
-
-            if clf_conf > 0:
-                all_roi['image'].append(roi * mask[:, :, np.newaxis])
-                all_roi['text'].append(prompt)
-
-            full_mask = np.zeros((image.size[1], image.size[0]), dtype=np.uint8)
-            full_mask[ymin:ymax, xmin:xmax] = mask
-
-            if transform:
-                src = rasterio.open(image_path)
-
-                xmin, ymin = src.xy(xmin, ymin)
-                xmax, ymax = src.xy(xmax, ymax)
-                ymin, ymax = ymax, ymin
-
-                xindex, yindex = np.where(full_mask == 1)
-                xindex, yindex = src.xy(xindex, yindex)
-                full_mask = np.hstack((xindex[..., np.newaxis], yindex[..., np.newaxis]))
-
-            preds.append({
-                'confidence': detections['scores'][i].item() * 100,
-                'box': {'xmin': xmin, 'ymin': ymin, 'xmax': xmax, 'ymax': ymax},
-                'label': prompt,
-                'mask': full_mask.tolist()
-            })
-
-        del seg_model
-        torch.cuda.empty_cache()
-
-        if clf_conf > 0: 
-            clf_processor = AutoProcessor.from_pretrained(classifier_id)
-            clf_model = BlipForImageTextRetrieval.from_pretrained(classifier_id)
-
-            clf_model = clf_model.to(device)
-            clf_model.eval()
-
-            inputs = clf_processor(images=all_roi['image'], text=all_roi['text'], return_tensors='pt')
-            logits_per_image = clf_model(**inputs.to(device)).itm_score
-
-            probs = logits_per_image.softmax(dim=1)  # we can take the softmax to get the label probabilities
-            indices = torch.nonzero(probs[:, 1] >= clf_conf).flatten()
-            preds = [preds[i] for i in indices]
-
-            del clf_model
-            torch.cuda.empty_cache()
-        
-        if len(preds) < 1:
-            return None
-
-        return preds
+    return preds
 
 
 def sam_preprocess(
