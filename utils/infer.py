@@ -7,7 +7,12 @@ from PIL import Image
 from torchvision import transforms
 from torchvision.transforms.functional import InterpolationMode
 from tqdm import tqdm
-from transformers import AutoTokenizer, AutoProcessor, AutoModelForZeroShotObjectDetection, BlipForImageTextRetrieval
+from transformers import (
+    AutoProcessor, 
+    AutoModelForZeroShotObjectDetection, 
+    AutoTokenizer, 
+    BlipForImageTextRetrieval
+)
 from typing import List, Optional
 
 from model.segment_anything.utils.transforms import ResizeLongestSide
