@@ -140,8 +140,8 @@ def detect_segment(
         torch.cuda.empty_cache()
 
         if clf_conf > 0: 
-            clf_processor = AutoProcessor.from_pretrained(clf_id)
-            clf_model = BlipForImageTextRetrieval.from_pretrained(clf_id)
+            clf_processor = AutoProcessor.from_pretrained(classifier_id)
+            clf_model = BlipForImageTextRetrieval.from_pretrained(classifier_id)
 
             clf_model = clf_model.to(device)
             clf_model.eval()
