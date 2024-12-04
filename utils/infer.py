@@ -114,7 +114,7 @@ def detect_segment(
             mask = mask > 0
 
             inputs = clf_processor(images=roi * mask[:, :, np.newaxis], text=prompt, return_tensors='pt')
-            logits_per_image = torch.nn.functional.softmax(clf_model(**inputs).itm_score, dim=1)
+            logits_per_image = clf_model(**inputs).itm_score
 
             probs = logits_per_image.softmax(dim=1)  # we can take the softmax to get the label probabilities
             if probs[0][1] < clf_conf:
