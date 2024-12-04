@@ -150,7 +150,7 @@ def detect_segment(
             logits_per_image = clf_model(**inputs.to(device)).itm_score
 
             probs = logits_per_image.softmax(dim=1)  # we can take the softmax to get the label probabilities
-            indices = torch.nonzero(probs.argmax(dim=1)).flatten()
+            indices = torch.nonzero(probs[:, 1] > clf_conf).flatten()
             preds = [preds[i] for i in indices]
 
             del clf_model
