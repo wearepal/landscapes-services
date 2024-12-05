@@ -24,7 +24,7 @@ async def v1(
         labels: str, 
         det_conf: float = 5.0, 
         clf_conf: float = 75.0, 
-        n_repeats: int =5, 
+        n_repeats: int = 3, 
         detector_id: str = 'google/owlv2-base-patch16', 
         segmenter_id: str = 'YxZhang/evf-sam2', 
         classifier_id: str = 'Salesforce/blip-itm-base-coco', 
