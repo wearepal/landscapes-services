@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from transformers import set_seed
 
 from utils.geoserver import retrieve_tiff
-from utils.infer import detect_segment
+from utils.infer import detect_segment, transform_to_xy
 
 
 app = FastAPI()
@@ -58,6 +58,9 @@ async def v1(
                     classifier_id=classifier_id,
                     transform=True
                 )
+
+                # transform to coordinate system
+                predictions = transform_to_xy(predictions, img_path)
 
                 # remove the temporary image
                 rm(img_path)
