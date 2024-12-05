@@ -26,7 +26,7 @@ def detect_segment(
     labels: List[List[str]],
     det_conf: float = 0.05,
     clf_conf: float = 0.75,
-    n_repeats: int = 5,
+    n_repeats: int = 3,
     detector_id: Optional[str] = None,
     segmenter_id: Optional[str] = None,
     classifier_id: Optional[str] = None,
