@@ -38,6 +38,8 @@ async def v1(
         match model_id:
             case "segment":
 
+                print("Segmentation model with paras: ", labels, det_conf, clf_conf, n_repeats, detector_id, segmenter_id, classifier_id, seed, bbox, width, height, layer)
+
                 # set the seed
                 set_seed(seed)
 
