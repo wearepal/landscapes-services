@@ -172,7 +172,7 @@ def detect_segment(
             break
         all_preds.extend(preds)
 
-        if n > 0:
+        if n_repeats > 1:
             inverted_mask = [p['mask'] for p in preds]
             inverted_mask = ~np.logical_or.reduce(inverted_mask)
             image *= inverted_mask[..., np.newaxis]
