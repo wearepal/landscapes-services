@@ -182,7 +182,7 @@ def detect_segment(
         src = rasterio.open(image_path)
         for pred in all_preds:
 
-            xmin, ymin, xmax, ymax = pred['box']['xmin'], pred['box']['ymin'], pred['box']['xmax'], pred['box']['ymax']
+            xmin, ymin, xmax, ymax = pred['box'].values()
             xmin, ymin = src.xy(xmin, ymin)
             xmax, ymax = src.xy(xmax, ymax)
             pred['box'] = {'xmin': xmin, 'ymin': ymax, 'xmax': xmax, 'ymax': ymin}
