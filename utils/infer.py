@@ -44,11 +44,14 @@ def detect_segment(
 
         preds = []
 
-        det_processor = AutoProcessor.from_pretrained(detector_id)
-        det_model = AutoModelForZeroShotObjectDetection.from_pretrained(detector_id)
-
-        det_model = det_model.to(device)
-        det_model.eval()
+        if n > 0:
+            det_model.to(device)
+        else:
+            det_processor = AutoProcessor.from_pretrained(detector_id)
+            det_model = AutoModelForZeroShotObjectDetection.from_pretrained(detector_id)
+    
+            det_model = det_model.to(device)
+            det_model.eval()
 
         inputs = det_processor(text=labels, images=image, return_tensors='pt')
         outputs = det_model(**inputs.to(device))
@@ -64,25 +67,31 @@ def detect_segment(
         if len(detections['boxes']) < 1:
             return all_preds
 
-        del det_model
-        torch.cuda.empty_cache()
+        if n < n_repeats - 1:
+            det_model.to('cpu')
+        else:
+            del det_model
+            torch.cuda.empty_cache()
 
         tokenizer = AutoTokenizer.from_pretrained(segmenter_id)
-    
-        if 'sam2' in segmenter_id:
-            from model.evf_sam2 import EvfSam2Model
-            seg_model = EvfSam2Model.from_pretrained(segmenter_id, low_cpu_mem_usage=True)
-            model_type = "sam2"
+
+        if n > 0:
+            seg_model.to(device)
         else:
-            from model.evf_sam import EvfSamModel
-            seg_model = EvfSamModel.from_pretrained(segmenter_id, low_cpu_mem_usage=True)
-            model_type = "ori"
+            if 'sam2' in segmenter_id:
+                from model.evf_sam2 import EvfSam2Model
+                seg_model = EvfSam2Model.from_pretrained(segmenter_id, low_cpu_mem_usage=True)
+                model_type = "sam2"
+            else:
+                from model.evf_sam import EvfSamModel
+                seg_model = EvfSamModel.from_pretrained(segmenter_id, low_cpu_mem_usage=True)
+                model_type = "ori"
     
-        seg_model = seg_model.to(device)
-        seg_model.eval()
+            seg_model = seg_model.to(device)
+            seg_model.eval()
     
         all_roi = defaultdict(list)
-        for i, box in enumerate(tqdm(detections['boxes'].int().tolist())):
+        for i, box in enumerate(detections['boxes'].int().tolist()):
     
             # preprocess
             xmin, ymin, xmax, ymax = box
@@ -139,27 +148,37 @@ def detect_segment(
                 'label': prompt,
                 'mask': full_mask.tolist()
             })
-    
-        del seg_model
-        torch.cuda.empty_cache()
-    
-        if clf_conf > 0: 
-            clf_processor = AutoProcessor.from_pretrained(classifier_id)
-            clf_model = BlipForImageTextRetrieval.from_pretrained(classifier_id)
-    
-            clf_model = clf_model.to(device)
-            clf_model.eval()
-    
+
+        if n < n_repeats - 1:
+            det_model.to('cpu')
+        else:
+            del seg_model
+            torch.cuda.empty_cache()
+
+        if clf_conf > 0:
+
+            if n > 0:
+                clf_model.to(device)
+            else:
+                clf_processor = AutoProcessor.from_pretrained(classifier_id)
+                clf_model = BlipForImageTextRetrieval.from_pretrained(classifier_id)
+        
+                clf_model = clf_model.to(device)
+                clf_model.eval()
+
             inputs = clf_processor(images=all_roi['image'], text=all_roi['text'], return_tensors='pt')
             logits_per_image = clf_model(**inputs.to(device)).itm_score
-    
+
             probs = logits_per_image.softmax(dim=1)  # we can take the softmax to get the label probabilities
             indices = torch.nonzero(probs[:, 1] >= clf_conf).flatten()
             preds = [preds[i] for i in indices]
-    
-            del clf_model
-            torch.cuda.empty_cache()
-    
+
+            if n < n_repeats - 1:
+                det_model.to('cpu')
+            else:
+                del clf_model
+                torch.cuda.empty_cache()
+
         if len(preds) < 1:
             return all_preds
         all_preds.extend(preds)
