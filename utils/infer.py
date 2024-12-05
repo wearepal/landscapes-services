@@ -29,7 +29,8 @@ def detect_segment(
     n_repeats: int = 5,
     detector_id: Optional[str] = None,
     segmenter_id: Optional[str] = None,
-    classifier_id: Optional[str] = None
+    classifier_id: Optional[str] = None,
+    transform: Optional[bool] = False
 ):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -64,7 +65,7 @@ def detect_segment(
         detections = detections[0]
 
         if len(detections['boxes']) < 1:
-            return all_preds
+            break
 
         if n < n_repeats - 1:
             det_model.to('cpu')
@@ -168,31 +169,27 @@ def detect_segment(
                 torch.cuda.empty_cache()
 
         if len(preds) < 1:
-            return all_preds
+            break
         all_preds.extend(preds)
 
         inverted_mask = [p['mask'] for p in preds]
         inverted_mask = ~np.logical_or.reduce(inverted_mask)
         image *= inverted_mask[..., np.newaxis]
 
+    if transform:
+        for pred in all_preds:
+            src = rasterio.open(image_path)
+    
+            xmin, ymin, xmax, ymax = pred['box']
+            xmin, ymin = src.xy(xmin, ymin)
+            xmax, ymax = src.xy(xmax, ymax)
+            pred['box'] = xmin, ymax, xmax, ymin
+    
+            xindex, yindex = np.where(pred['mask'] == 1)
+            xindex, yindex = src.xy(xindex, yindex)
+            pred['mask'] = np.hstack((xindex[..., np.newaxis], yindex[..., np.newaxis]))
+
     return all_preds
-
-
-def transform_to_xy(predictions, image_path):
-
-    for pred in predictions:
-        src = rasterio.open(image_path)
-
-        xmin, ymin, xmax, ymax = pred['box']
-        xmin, ymin = src.xy(xmin, ymin)
-        xmax, ymax = src.xy(xmax, ymax)
-        pred['box'] = xmin, ymax, xmax, ymin
-
-        xindex, yindex = np.where(pred['mask'] == 1)
-        xindex, yindex = src.xy(xindex, yindex)
-        pred['mask'] = np.hstack((xindex[..., np.newaxis], yindex[..., np.newaxis]))
-
-    return predictions
 
 
 def sam_preprocess(
