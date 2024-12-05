@@ -160,9 +160,9 @@ def detect_segment(
             del clf_model
             torch.cuda.empty_cache()
     
-        all_preds.extend(preds)
-        if len(all_preds) < 1:
+        if len(preds) < 1:
             return all_preds
+        all_preds.extend(preds)
 
         complete_mask = [pred['mask'] for pred in all_preds]
         complete_mask = ~np.logical_or.reduce(complete_mask)
