@@ -164,9 +164,9 @@ def detect_segment(
             return all_preds
         all_preds.extend(preds)
 
-        complete_mask = [pred['mask'] for pred in all_preds]
-        complete_mask = ~np.logical_or.reduce(complete_mask)
-        image *= complete_mask[..., np.newaxis]
+        inverted_mask = [p['mask'] for p in preds]
+        inverted_mask = ~np.logical_or.reduce(inverted_mask)
+        image *= inverted_mask[..., np.newaxis]
 
     return all_preds
 
