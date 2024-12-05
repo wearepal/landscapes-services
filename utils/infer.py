@@ -178,13 +178,14 @@ def detect_segment(
             image *= inverted_mask[..., np.newaxis]
 
     if transform:
+
+        src = rasterio.open(image_path)
         for pred in all_preds:
-            src = rasterio.open(image_path)
-    
+
             xmin, ymin, xmax, ymax = pred['box']
             xmin, ymin = src.xy(xmin, ymin)
             xmax, ymax = src.xy(xmax, ymax)
-            pred['box'] = xmin, ymax, xmax, ymin
+            pred['box'] = {'xmin': xmin, 'ymin': ymax, 'xmax': xmax, 'ymax': ymin}
     
             xindex, yindex = np.where(pred['mask'] == 1)
             xindex, yindex = src.xy(xindex, yindex)
