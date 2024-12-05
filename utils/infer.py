@@ -186,10 +186,12 @@ def detect_segment(
             xmin, ymin = src.xy(xmin, ymin)
             xmax, ymax = src.xy(xmax, ymax)
             pred['box'] = {'xmin': xmin, 'ymin': ymax, 'xmax': xmax, 'ymax': ymin}
-    
-            xindex, yindex = np.where(pred['mask'] == 1)
+
+            full_mask = np.array(pred['mask'])
+            xindex, yindex = np.where(full_mask == 1)
             xindex, yindex = src.xy(xindex, yindex)
-            pred['mask'] = np.hstack((xindex[..., np.newaxis], yindex[..., np.newaxis]))
+            full_mask = np.hstack((xindex[..., np.newaxis], yindex[..., np.newaxis]))
+            pred['mask'] = full_mask.tolist()
 
     return all_preds
 
